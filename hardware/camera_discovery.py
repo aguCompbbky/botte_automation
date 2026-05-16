@@ -34,6 +34,18 @@ class CameraCandidate:
 def _probe_picamera2_impl() -> bool:
     from picamera2 import Picamera2
 
+    # libcamera'nin gormesi gereken kameralari listele;
+    # plug/unplug sonrasi liste bos donuyorsa kamera henuz hazir degil.
+    try:
+        cameras = Picamera2.global_camera_info()
+    except Exception as e:
+        logger.debug("global_camera_info hatasi: %s", e)
+        return False
+
+    if not cameras:
+        logger.debug("Picamera2: libcamera hic kamera bulamadi (henuz hazir olmayabilir)")
+        return False
+
     picam = None
     try:
         picam = Picamera2()
@@ -44,6 +56,9 @@ def _probe_picamera2_impl() -> bool:
         picam.start()
         frame = picam.capture_array()
         return frame is not None
+    except Exception as e:
+        logger.warning("Picamera2 probe acma hatasi: %s", e)
+        return False
     finally:
         if picam is not None:
             try:
@@ -57,7 +72,7 @@ def _probe_picamera2() -> bool:
     try:
         return run_with_timeout(_probe_picamera2_impl, CAMERA_PROBE_TIMEOUT_SEC, False)
     except Exception as e:
-        logger.debug("Picamera2 probe failed: %s", e)
+        logger.warning("Picamera2 probe timeout/exception: %s", e)
         return False
 
 

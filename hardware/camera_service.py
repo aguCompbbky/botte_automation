@@ -145,29 +145,39 @@ class CameraService:
             return None
         return frame
 
-    def _open_camera(self, candidate: CameraCandidate) -> bool:
-        self._release_camera()
-        try:
-            cam = candidate.create()
-
-            def _start_and_read() -> np.ndarray | None:
-                cam.start()
-                return cam.read()
-
-            frame = run_with_timeout(_start_and_read, CAMERA_OPEN_TIMEOUT_SEC, None)
-            if frame is None:
-                self._stop_camera_safe(cam)
-                return False
-
-            self._camera = cam
-            self._is_picamera2 = candidate.backend == "picamera2"
-            self._publish_frame(frame)
-            self._set_state(CameraState.CAMERA_OK, candidate.label)
-            return True
-        except Exception as e:
-            logger.warning("Kamera acilamadi (%s): %s", candidate.label, e)
+    def _open_camera(self, candidate: CameraCandidate, retries: int = 2, retry_delay: float = 1.5) -> bool:
+        """Kamera acma: unplug/replug sonrasi libcamera restart icin retry destekli."""
+        for attempt in range(1, retries + 1):
             self._release_camera()
-            return False
+            try:
+                cam = candidate.create()
+
+                def _start_and_read() -> np.ndarray | None:
+                    cam.start()
+                    return cam.read()
+
+                frame = run_with_timeout(_start_and_read, CAMERA_OPEN_TIMEOUT_SEC, None)
+                if frame is None:
+                    self._stop_camera_safe(cam)
+                    if attempt < retries:
+                        logger.debug(
+                            "Kamera frame alinamadi (%s), %ds sonra tekrar deneniyor (deneme %d/%d)",
+                            candidate.label, retry_delay, attempt, retries,
+                        )
+                        time.sleep(retry_delay)
+                    continue
+
+                self._camera = cam
+                self._is_picamera2 = candidate.backend == "picamera2"
+                self._publish_frame(frame)
+                self._set_state(CameraState.CAMERA_OK, candidate.label)
+                return True
+            except Exception as e:
+                logger.warning("Kamera acilamadi (%s) deneme %d/%d: %s", candidate.label, attempt, retries, e)
+                self._release_camera()
+                if attempt < retries:
+                    time.sleep(retry_delay)
+        return False
 
     def _scan_once(self) -> bool:
         try:

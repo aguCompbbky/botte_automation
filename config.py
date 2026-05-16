@@ -13,12 +13,12 @@ DEFAULT_FRAME_INTERVAL = 0.05
 REJECT_COOLDOWN_SEC = 2.0
 
 # Kamera thread
-CAMERA_SCAN_INTERVAL_SEC = 1.0
-CAMERA_READ_FAIL_MAX = 3
-CAMERA_READ_TIMEOUT_SEC = 0.5
-CAMERA_STOP_TIMEOUT_SEC = 2.0
-CAMERA_PROBE_TIMEOUT_SEC = 1.5
-CAMERA_OPEN_TIMEOUT_SEC = 3.0
+CAMERA_SCAN_INTERVAL_SEC = 2.0        # scan dongusu bekleme (unplug/replug icin arttirildi)
+CAMERA_READ_FAIL_MAX = 5              # art arda read fail limiti (arttirildi)
+CAMERA_READ_TIMEOUT_SEC = 1.0        # tek frame okuma timeout (arttirildi)
+CAMERA_STOP_TIMEOUT_SEC = 3.0        # kamera kapama timeout (arttirildi)
+CAMERA_PROBE_TIMEOUT_SEC = 4.0       # probe timeout: libcamera restart icin arttirildi
+CAMERA_OPEN_TIMEOUT_SEC = 6.0        # kamera acma/baslama timeout (arttirildi)
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 USB_CAMERA_SCAN_MAX_INDEX = 6

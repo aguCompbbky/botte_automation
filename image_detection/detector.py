@@ -10,6 +10,7 @@ import numpy as np
 from ultralytics import YOLO
 
 from config import (
+    ACCEPT_CONF,
     BOTTLE_CROP_PADDING,
     BOTTLE_DETECT_CONF,
     BOTTLE_DETECT_MODEL,
@@ -17,6 +18,7 @@ from config import (
     DEFAULT_CONF,
     DEFAULT_IMGSZ,
     MODEL_PATH,
+    REJECT_CONF,
     REJECT_COOLDOWN_SEC,
 )
 
@@ -54,7 +56,9 @@ class BottleDetector:
     def __init__(
         self,
         model_path: Path | str = MODEL_PATH,
-        conf_threshold: float = DEFAULT_CONF,
+        accept_conf: float = ACCEPT_CONF,
+        reject_conf: float = REJECT_CONF,
+        conf_threshold: float | None = None,
         imgsz: int = DEFAULT_IMGSZ,
         on_reject: Callable[[ClassificationResult], None] | None = None,
         reject_cooldown_sec: float = REJECT_COOLDOWN_SEC,
@@ -63,7 +67,10 @@ class BottleDetector:
         detect_model: str = BOTTLE_DETECT_MODEL,
     ) -> None:
         self.model_path = Path(model_path)
-        self.conf_threshold = conf_threshold
+        if conf_threshold is not None:
+            reject_conf = conf_threshold
+        self.accept_conf = accept_conf
+        self.reject_conf = reject_conf
         self.imgsz = imgsz
         self.on_reject = on_reject
         self.reject_cooldown_sec = reject_cooldown_sec
@@ -146,8 +153,13 @@ class BottleDetector:
                 probs_str,
             )
 
+    def _passes_threshold(self, cls: ClassificationResult) -> bool:
+        if cls.label == "accept":
+            return cls.confidence >= self.accept_conf
+        return cls.confidence >= self.reject_conf
+
     def _maybe_trigger_reject(self, cls: ClassificationResult) -> None:
-        if cls.label != "reject" or cls.confidence < self.conf_threshold:
+        if cls.label != "reject" or cls.confidence < self.reject_conf:
             return
         now = time.monotonic()
         if now - self._last_reject_trigger < self.reject_cooldown_sec:
@@ -171,7 +183,7 @@ class BottleDetector:
         roi = self._crop_with_padding(frame, bbox) if bbox else frame
         cls = self.classify(roi)
 
-        if cls.confidence < self.conf_threshold:
+        if not self._passes_threshold(cls):
             out = FrameResult(
                 status="uncertain",
                 label=cls.label,

@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 from communicationwardunio.arduino_client import create_arduino_client
 from config import (
+    ACCEPT_CONF,
     ARDUINO_MODE,
     BOTTLE_DETECT_CONF,
     COLOR_ACCEPT_BGR,
@@ -31,6 +32,7 @@ from config import (
     FRAME_BORDER_THICKNESS,
     MODEL_PATH,
     PREVIEW_WINDOW_NAME,
+    REJECT_CONF,
 )
 from hardware.camera_service import CameraService, CameraState
 from image_detection.detector import BottleDetector, FrameResult
@@ -89,7 +91,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Sise doluluk kontrolu (accept/reject)")
     parser.add_argument("--device", default=DEFAULT_DEVICE, choices=["raspberry", "laptop"])
     parser.add_argument("--model", type=Path, default=MODEL_PATH)
-    parser.add_argument("--conf", type=float, default=DEFAULT_CONF)
+    parser.add_argument("--accept-conf", type=float, default=ACCEPT_CONF, help="Accept esigi (yuksek = daha secici)")
+    parser.add_argument("--reject-conf", type=float, default=REJECT_CONF, help="Reject esigi")
+    parser.add_argument("--conf", type=float, default=None, help="Reject esigi (eski parametre)")
     parser.add_argument("--bottle-conf", type=float, default=BOTTLE_DETECT_CONF, help="Sise tespit esigi")
     parser.add_argument(
         "--no-bottle-gate",
@@ -114,9 +118,11 @@ def main() -> None:
     )
     arduino.connect()
 
+    reject_conf = args.conf if args.conf is not None else args.reject_conf
     detector = BottleDetector(
         model_path=args.model,
-        conf_threshold=args.conf,
+        accept_conf=args.accept_conf,
+        reject_conf=reject_conf,
         bottle_gate=not args.no_bottle_gate,
         bottle_detect_conf=args.bottle_conf,
         on_reject=lambda r: arduino.notify_reject(),
@@ -126,9 +132,10 @@ def main() -> None:
     camera_service.start()
 
     log.info(
-        "Cihaz: %s | cls_conf: %.2f | sise_tespit: %s | bottle_conf: %.2f",
+        "Cihaz: %s | accept_conf: %.2f | reject_conf: %.2f | sise_tespit: %s | bottle_conf: %.2f",
         args.device,
-        args.conf,
+        args.accept_conf,
+        reject_conf,
         "acik" if not args.no_bottle_gate else "kapali",
         args.bottle_conf,
     )

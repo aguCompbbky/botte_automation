@@ -1,3 +1,3 @@
-from .detector import BottleDetector
+from .detector import BottleDetector, FrameResult, FrameStatus
 
-__all__ = ["BottleDetector"]
+__all__ = ["BottleDetector", "FrameResult", "FrameStatus"]

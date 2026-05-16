@@ -18,6 +18,18 @@ CAMERA_HEIGHT = 480
 USB_CAMERA_SCAN_MAX_INDEX = 6
 PREVIEW_WINDOW_NAME = "Bottle Inspection"
 
+# Asama 1: sise tespiti (COCO bottle) — sise yoksa accept/reject yapma
+BOTTLE_DETECT_MODEL = "yolov8n.pt"
+BOTTLE_DETECT_CONF = 0.45
+COCO_BOTTLE_CLASS_ID = 39
+BOTTLE_CROP_PADDING = 0.05
+
+# Onizleme cerceve kalinligi (BGR)
+FRAME_BORDER_THICKNESS = 6
+COLOR_ACCEPT_BGR = (0, 255, 0)
+COLOR_REJECT_BGR = (0, 0, 255)
+COLOR_NO_BOTTLE_BGR = (0, 200, 255)
+
 # Arduino over USB serial
 ARDUINO_MODE = "mock"
 DEFAULT_SERIAL_PORT = "/dev/ttyACM0"

@@ -19,16 +19,21 @@ if str(ROOT) not in sys.path:
 from communicationwardunio.arduino_client import create_arduino_client
 from config import (
     ARDUINO_MODE,
+    BOTTLE_DETECT_CONF,
+    COLOR_ACCEPT_BGR,
+    COLOR_NO_BOTTLE_BGR,
+    COLOR_REJECT_BGR,
     DEFAULT_BAUD_RATE,
     DEFAULT_CONF,
     DEFAULT_DEVICE,
     DEFAULT_FRAME_INTERVAL,
     DEFAULT_SERIAL_PORT,
+    FRAME_BORDER_THICKNESS,
     MODEL_PATH,
     PREVIEW_WINDOW_NAME,
 )
 from hardware.camera_service import CameraService, CameraState
-from image_detection.detector import BottleDetector
+from image_detection.detector import BottleDetector, FrameResult
 
 
 def setup_logging(verbose: bool) -> None:
@@ -40,12 +45,37 @@ def setup_logging(verbose: bool) -> None:
     )
 
 
-def draw_overlay(frame_bgr: np.ndarray, label: str, confidence: float) -> np.ndarray:
+def border_color(result: FrameResult) -> tuple[int, int, int]:
+    if result.status == "accept":
+        return COLOR_ACCEPT_BGR
+    if result.status == "reject":
+        return COLOR_REJECT_BGR
+    return COLOR_NO_BOTTLE_BGR
+
+
+def status_text(result: FrameResult) -> str:
+    if result.status == "no_bottle":
+        return "NO BOTTLE"
+    if result.status == "uncertain":
+        return f"UNCERTAIN {result.label} {result.confidence:.2f}"
+    return f"{result.status.upper()} {result.confidence:.2f}"
+
+
+def draw_overlay(frame_bgr: np.ndarray, result: FrameResult) -> np.ndarray:
     out = frame_bgr.copy()
-    color = (0, 200, 0) if label == "accept" else (0, 0, 255)
-    text = f"{label.upper()} {confidence:.2f}"
-    cv2.rectangle(out, (0, 0), (out.shape[1], 48), (0, 0, 0), -1)
-    cv2.putText(out, text, (12, 34), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2, cv2.LINE_AA)
+    h, w = out.shape[:2]
+    color = border_color(result)
+    t = FRAME_BORDER_THICKNESS
+
+    cv2.rectangle(out, (0, 0), (w - 1, h - 1), color, t)
+
+    if result.bbox_xyxy is not None:
+        x1, y1, x2, y2 = result.bbox_xyxy
+        cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
+
+    label = status_text(result)
+    cv2.rectangle(out, (0, 0), (w, 48), (0, 0, 0), -1)
+    cv2.putText(out, label, (12, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2, cv2.LINE_AA)
     return out
 
 
@@ -57,13 +87,15 @@ def to_bgr(frame: np.ndarray, is_rgb: bool) -> np.ndarray:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sise doluluk kontrolu (accept/reject)")
-    parser.add_argument(
-        "--device",
-        default=DEFAULT_DEVICE,
-        choices=["raspberry", "laptop"],
-    )
+    parser.add_argument("--device", default=DEFAULT_DEVICE, choices=["raspberry", "laptop"])
     parser.add_argument("--model", type=Path, default=MODEL_PATH)
     parser.add_argument("--conf", type=float, default=DEFAULT_CONF)
+    parser.add_argument("--bottle-conf", type=float, default=BOTTLE_DETECT_CONF, help="Sise tespit esigi")
+    parser.add_argument(
+        "--no-bottle-gate",
+        action="store_true",
+        help="Sise tespitini kapat (sadece siniflandirma — test icin)",
+    )
     parser.add_argument("--interval", type=float, default=DEFAULT_FRAME_INTERVAL)
     parser.add_argument("--serial-port", default=DEFAULT_SERIAL_PORT)
     parser.add_argument("--baud-rate", type=int, default=DEFAULT_BAUD_RATE)
@@ -85,13 +117,21 @@ def main() -> None:
     detector = BottleDetector(
         model_path=args.model,
         conf_threshold=args.conf,
+        bottle_gate=not args.no_bottle_gate,
+        bottle_detect_conf=args.bottle_conf,
         on_reject=lambda r: arduino.notify_reject(),
     )
 
     camera_service = CameraService(device=args.device)
     camera_service.start()
 
-    log.info("Cihaz: %s | Model: %s | Conf: %.2f", args.device, args.model, args.conf)
+    log.info(
+        "Cihaz: %s | cls_conf: %.2f | sise_tespit: %s | bottle_conf: %.2f",
+        args.device,
+        args.conf,
+        "acik" if not args.no_bottle_gate else "kapali",
+        args.bottle_conf,
+    )
 
     last_frame_id = -1
     preview_open = False
@@ -115,11 +155,7 @@ def main() -> None:
             result = detector.process_frame(frame)
 
             if not args.no_preview:
-                display = draw_overlay(
-                    to_bgr(frame, camera_service.frame_is_rgb),
-                    result.label,
-                    result.confidence,
-                )
+                display = draw_overlay(to_bgr(frame, camera_service.frame_is_rgb), result)
                 cv2.imshow(PREVIEW_WINDOW_NAME, display)
                 preview_open = True
                 if (cv2.waitKey(1) & 0xFF) == ord("q"):

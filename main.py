@@ -25,7 +25,6 @@ from config import (
     COLOR_NO_BOTTLE_BGR,
     COLOR_REJECT_BGR,
     DEFAULT_BAUD_RATE,
-    DEFAULT_CONF,
     DEFAULT_DEVICE,
     DEFAULT_FRAME_INTERVAL,
     DEFAULT_SERIAL_PORT,
@@ -45,6 +44,14 @@ def setup_logging(verbose: bool) -> None:
         format="%(asctime)s | %(levelname)-7s | %(message)s",
         datefmt="%H:%M:%S",
     )
+
+
+def close_preview_window() -> None:
+    try:
+        cv2.destroyWindow(PREVIEW_WINDOW_NAME)
+    except cv2.error:
+        pass
+    cv2.waitKey(1)
 
 
 def border_color(result: FrameResult) -> tuple[int, int, int]:
@@ -91,15 +98,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Sise doluluk kontrolu (accept/reject)")
     parser.add_argument("--device", default=DEFAULT_DEVICE, choices=["raspberry", "laptop"])
     parser.add_argument("--model", type=Path, default=MODEL_PATH)
-    parser.add_argument("--accept-conf", type=float, default=ACCEPT_CONF, help="Accept esigi (yuksek = daha secici)")
-    parser.add_argument("--reject-conf", type=float, default=REJECT_CONF, help="Reject esigi")
-    parser.add_argument("--conf", type=float, default=None, help="Reject esigi (eski parametre)")
-    parser.add_argument("--bottle-conf", type=float, default=BOTTLE_DETECT_CONF, help="Sise tespit esigi")
-    parser.add_argument(
-        "--no-bottle-gate",
-        action="store_true",
-        help="Sise tespitini kapat (sadece siniflandirma — test icin)",
-    )
+    parser.add_argument("--accept-conf", type=float, default=ACCEPT_CONF)
+    parser.add_argument("--reject-conf", type=float, default=REJECT_CONF)
+    parser.add_argument("--conf", type=float, default=None)
+    parser.add_argument("--bottle-conf", type=float, default=BOTTLE_DETECT_CONF)
+    parser.add_argument("--no-bottle-gate", action="store_true")
     parser.add_argument("--interval", type=float, default=DEFAULT_FRAME_INTERVAL)
     parser.add_argument("--serial-port", default=DEFAULT_SERIAL_PORT)
     parser.add_argument("--baud-rate", type=int, default=DEFAULT_BAUD_RATE)
@@ -131,30 +134,30 @@ def main() -> None:
     camera_service = CameraService(device=args.device)
     camera_service.start()
 
-    log.info(
-        "Cihaz: %s | accept_conf: %.2f | reject_conf: %.2f | sise_tespit: %s | bottle_conf: %.2f",
-        args.device,
-        args.accept_conf,
-        reject_conf,
-        "acik" if not args.no_bottle_gate else "kapali",
-        args.bottle_conf,
-    )
-
     last_frame_id = -1
+    last_state_version = -1
     preview_open = False
 
     try:
         while True:
-            if camera_service.state == CameraState.CAMERA_SCAN:
-                last_frame_id = -1
-                if preview_open:
-                    cv2.destroyWindow(PREVIEW_WINDOW_NAME)
+            state = camera_service.state
+            state_version = camera_service.state_version
+
+            if state_version != last_state_version:
+                if state == CameraState.CAMERA_SCAN and preview_open:
+                    close_preview_window()
                     preview_open = False
+                    last_frame_id = -1
+                last_state_version = state_version
+
+            if state == CameraState.CAMERA_SCAN:
+                cv2.waitKey(1)
                 time.sleep(0.05)
                 continue
 
             frame_id, frame = camera_service.get_latest_frame()
             if frame is None or frame_id == last_frame_id:
+                cv2.waitKey(1)
                 time.sleep(0.01)
                 continue
             last_frame_id = frame_id
@@ -175,7 +178,8 @@ def main() -> None:
     finally:
         camera_service.stop()
         if preview_open:
-            cv2.destroyAllWindows()
+            close_preview_window()
+        cv2.destroyAllWindows()
         arduino.disconnect()
 
 

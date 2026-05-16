@@ -6,8 +6,9 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
-from config import CAMERA_HEIGHT, CAMERA_WIDTH, USB_CAMERA_SCAN_MAX_INDEX
+from config import CAMERA_HEIGHT, CAMERA_PROBE_TIMEOUT_SEC, CAMERA_WIDTH, USB_CAMERA_SCAN_MAX_INDEX
 from hardware.camera_manager import CameraManager, DeviceType, LaptopCamera, RaspberryCamera
+from hardware.timeouts import run_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,8 @@ class CameraCandidate:
         )
 
 
-def _probe_picamera2() -> bool:
-    try:
-        from picamera2 import Picamera2
-    except ImportError:
-        return False
+def _probe_picamera2_impl() -> bool:
+    from picamera2 import Picamera2
 
     picam = None
     try:
@@ -46,9 +44,6 @@ def _probe_picamera2() -> bool:
         picam.start()
         frame = picam.capture_array()
         return frame is not None
-    except Exception as e:
-        logger.debug("Picamera2 probe failed: %s", e)
-        return False
     finally:
         if picam is not None:
             try:
@@ -58,20 +53,34 @@ def _probe_picamera2() -> bool:
                 pass
 
 
-def _probe_usb_index(index: int) -> bool:
+def _probe_picamera2() -> bool:
+    try:
+        return run_with_timeout(_probe_picamera2_impl, CAMERA_PROBE_TIMEOUT_SEC, False)
+    except Exception as e:
+        logger.debug("Picamera2 probe failed: %s", e)
+        return False
+
+
+def _probe_usb_index_impl(index: int) -> bool:
     import cv2
 
     cap = cv2.VideoCapture(index)
     try:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if not cap.isOpened():
             return False
         ok, frame = cap.read()
         return ok and frame is not None
+    finally:
+        cap.release()
+
+
+def _probe_usb_index(index: int) -> bool:
+    try:
+        return run_with_timeout(lambda: _probe_usb_index_impl(index), CAMERA_PROBE_TIMEOUT_SEC, False)
     except Exception as e:
         logger.debug("USB camera probe index %d failed: %s", index, e)
         return False
-    finally:
-        cap.release()
 
 
 def discover_raspberry_cameras() -> list[CameraCandidate]:

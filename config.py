@@ -10,9 +10,16 @@ DEFAULT_CONF = 0.85
 DEFAULT_FRAME_INTERVAL = 0.05
 REJECT_COOLDOWN_SEC = 2.0
 
-# Arduino over USB serial (pyserial)
-# Linux: /dev/ttyACM0 (native USB) veya /dev/ttyUSB0 (USB-serial chip)
-ARDUINO_MODE = "mock"  # "mock" | "usb"
+# Kamera thread
+CAMERA_SCAN_INTERVAL_SEC = 1.0
+CAMERA_READ_FAIL_MAX = 15
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 480
+USB_CAMERA_SCAN_MAX_INDEX = 6
+PREVIEW_WINDOW_NAME = "Bottle Inspection"
+
+# Arduino over USB serial
+ARDUINO_MODE = "mock"
 DEFAULT_SERIAL_PORT = "/dev/ttyACM0"
 DEFAULT_BAUD_RATE = 115200
 ARDUINO_REJECT_CMD = "REJECT\n"
